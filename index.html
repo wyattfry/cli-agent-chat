@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CLI Agent Chat</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #101318; color: #e8eaf0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .app { width: min(1120px, 100%); height: min(850px, calc(100vh - 48px)); min-height: 500px; display: grid; grid-template-columns: 245px minmax(0, 1fr); border: 1px solid #343b49; border-radius: 16px; background: #191e27; overflow: hidden; box-shadow: 0 20px 60px #0005; }
+    aside { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid #343b49; background: #151a22; }
+    .side-title { padding: 20px 16px 12px; color: #aab3c2; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    #conversations { overflow: auto; padding: 0 9px 12px; }
+    .conversation { display: flex; align-items: center; gap: 2px; margin-bottom: 4px; border-radius: 9px; }
+    .conversation:hover, .conversation.active { background: #303b51; }
+    .conversation button { background: transparent; color: #e8eaf0; }
+    .conversation .open { flex: 1; min-width: 0; text-align: left; font-weight: 400; padding: 11px 8px; }
+    .conversation .rename { flex: none; padding: 6px; font-size: 12px; color: #aab3c2; visibility: hidden; }
+    .conversation:hover .rename, .conversation:focus-within .rename { visibility: visible; }
+    @media (hover: none) { .conversation .rename { visibility: visible; } }
+    .conversation .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conversation .meta { display: block; margin-top: 3px; color: #aab3c2; font-size: 12px; }
+    .conversation .state { font-weight: 700; }
+    .conversation .state::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+    .conversation .state.ready { color: #9addad; }
+    .conversation .state.working { color: #b0c2ff; }
+    .conversation .state.waiting { color: #ffd48a; }
+    .empty-list { color: #8993a3; padding: 10px; font-size: 13px; }
+    main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    header { padding: 18px 22px; border-bottom: 1px solid #343b49; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    h1 { font-size: 18px; margin: 0 auto 0 0; letter-spacing: -.02em; }
+    #model { width: 185px; }
+    select, input, textarea, button { font: inherit; }
+    select, input, textarea { background: #101318; border: 1px solid #424b59; border-radius: 9px; color: #e8eaf0; padding: 9px 11px; outline: none; }
+    select:focus, input:focus, textarea:focus { border-color: #8ca8ff; }
+    button { cursor: pointer; border: 0; border-radius: 9px; padding: 10px 15px; background: #90a9ff; color: #111827; font-weight: 700; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.secondary { background: #343b49; color: #e8eaf0; }
+    #chat { flex: 1; overflow: auto; padding: 24px 22px; display: flex; flex-direction: column; gap: 16px; }
+    .welcome { margin: auto; text-align: center; color: #aab3c2; max-width: 420px; }
+    .welcome strong { display: block; color: #e8eaf0; font-size: 22px; margin-bottom: 8px; }
+    .message { max-width: 92%; padding: 12px 15px; border-radius: 12px; overflow-wrap: anywhere; }
+    .message[hidden] { display: none; }
+    .user { align-self: flex-end; background: #303f70; white-space: pre-wrap; }
+    .assistant { align-self: flex-start; background: #252c37; }
+    .question { border: 1px solid #7389c4; }
+    .assistant p, .assistant ul, .assistant ol, .assistant pre, .assistant blockquote, .assistant table { margin: 0 0 .8em; }
+    .assistant > :last-child { margin-bottom: 0; }
+    .assistant h1, .assistant h2, .assistant h3 { margin: .9em 0 .4em; line-height: 1.2; }
+    .assistant h1:first-child, .assistant h2:first-child, .assistant h3:first-child { margin-top: 0; }
+    .assistant h1 { font-size: 1.35em; } .assistant h2 { font-size: 1.2em; } .assistant h3 { font-size: 1.08em; }
+    .assistant ul, .assistant ol { padding-left: 1.5em; }
+    .assistant li + li { margin-top: .25em; }
+    .assistant a { color: #a9bbff; text-decoration: underline; }
+    .assistant code { background: #111820; padding: .1em .3em; border-radius: 4px; font-size: .92em; }
+    .assistant pre { background: #111820; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    .assistant pre code { background: none; padding: 0; }
+    .assistant blockquote { border-left: 3px solid #7084b8; color: #c4ccda; padding-left: 12px; }
+    .assistant table { border-collapse: collapse; display: block; overflow-x: auto; }
+    .assistant th, .assistant td { border: 1px solid #4a5465; padding: 5px 8px; }
+    .error { color: #ffb1b1; }
+    .attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .attachment { background: #354363; border-radius: 6px; padding: 4px 7px; font-size: 12px; }
+    .attachment img { display: block; max-width: 110px; max-height: 80px; margin-bottom: 5px; border-radius: 4px; }
+    .attachment button { margin-left: 7px; padding: 0 2px; background: transparent; color: #e8eaf0; }
+    .message .attachments { opacity: .85; }
+    form { border-top: 1px solid #343b49; padding: 16px 22px; position: relative; }
+    form.drop-target::after { content: 'Drop images or text files to attach'; position: absolute; inset: 7px; z-index: 2; display: grid; place-items: center; border: 2px dashed #a9bbff; border-radius: 9px; background: #202d42f2; color: #e8eaf0; font-weight: 700; pointer-events: none; }
+    textarea { width: 100%; min-height: 82px; max-height: 220px; resize: vertical; display: block; }
+    .queue { margin-top: 10px; padding: 9px 11px; border: 1px solid #4b5871; border-radius: 9px; color: #bfc9df; font-size: 13px; }
+    .queue[hidden] { display: none; }
+    .queue-header, .queue-item { display: flex; align-items: center; gap: 8px; }
+    .queue-header strong, .queue-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue button { padding: 2px 6px; background: transparent; color: #bfc9df; font-size: 12px; }
+    .queue-item { margin-top: 5px; }
+    .actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    #status { margin-right: auto; color: #aab3c2; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
+    .busy #status::before { content: ''; width: 12px; height: 12px; border: 2px solid #65708b; border-top-color: #a9bbff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 650px) { body { padding: 0; } .app { height: 100vh; min-height: 0; border-radius: 0; display: flex; flex-direction: column; } aside { max-height: 145px; flex: none; border-right: 0; border-bottom: 1px solid #343b49; } .side-title { padding: 9px 15px 4px; } #conversations { display: flex; overflow-x: auto; padding: 0 8px 8px; } .conversation { width: 165px; flex: none; margin: 0 4px 0 0; } main { flex: 1; } header, #chat, form { padding-left: 15px; padding-right: 15px; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+  <aside aria-label="Conversations"><div class="side-title">Conversations</div><nav id="conversations"><div class="empty-list">No conversations yet</div></nav></aside>
+  <main>
+    <header>
+      <h1>CLI Agent Chat</h1>
+      <select id="provider" aria-label="CLI"><option value="codex">Codex</option><option value="claude">Claude</option></select>
+      <input id="model" list="model-options" aria-label="Model" placeholder="Default model" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._:/@-]*" title="Use a model ID such as sonnet or gpt-6.1-sol"><datalist id="model-options"></datalist>
+      <button id="new" class="secondary" type="button">New chat</button>
+    </header>
+    <div id="chat" role="log" aria-live="polite"><div class="welcome"><strong>What would you like to do?</strong>Choose a CLI, enter a prompt, and send it.</div></div>
+    <form id="form">
+      <textarea id="prompt" placeholder="Ask Codex or Claude… paste an image here" aria-label="Prompt"></textarea>
+      <div id="attachments" class="attachments" aria-live="polite"></div>
+      <div id="queue" class="queue" aria-live="polite" hidden></div>
+      <div class="actions"><span id="status">Ready</span><input id="files" type="file" multiple accept="image/png,image/jpeg,image/webp,.txt,.md,.csv,.json,.jsonl,.yaml,.yml,.toml,.ini,.log,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.sh,.sql,.go,.rs,.java,.c,.h,.cpp,.hpp,.rb,.php,.tf,.hcl" hidden><button id="attach" class="secondary" type="button">Attach file</button><button id="stop" class="secondary" type="button" hidden>Stop</button><button id="send" type="submit">Send</button></div>
+    </form>
+  </main>
+  </div>
+  <script src="/vendor/markdown-it.js"></script>
+  <script>
+    const markdown = window.markdownit({ html: false, linkify: true, breaks: true });
+    const renderLinkOpen = markdown.renderer.rules.link_open || ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+    markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
+      tokens[index].attrSet('target', '_blank');
+      tokens[index].attrSet('rel', 'noopener noreferrer');
+      return renderLinkOpen(tokens, index, options, env, self);
+    };
+    const provider = document.querySelector('#provider');
+    const model = document.querySelector('#model');
+    const modelOptions = document.querySelector('#model-options');
+    const chat = document.querySelector('#chat');
+    const prompt = document.querySelector('#prompt');
+    const status = document.querySelector('#status');
+    const send = document.querySelector('#send');
+    const stop = document.querySelector('#stop');
+    const files = document.querySelector('#files');
+    const form = document.querySelector('#form');
+    const attach = document.querySelector('#attach');
+    const attachmentsEl = document.querySelector('#attachments');
+    const queueEl = document.querySelector('#queue');
+    const list = document.querySelector('#conversations');
+    let attachments = [], queuedMessages = [], uploading = false, workingTimer = null;
+    let defaultWorkingDirectory, token, controller, pendingQuestion = null, current = { id: null, provider: 'codex', model: '', cwd: null, messages: [] }, navigation = 0;
+
+    function refreshModelOptions() {
+      const names = provider.value === 'claude' ? ['sonnet', 'opus', 'haiku'] : ['gpt-6.1-sol', 'gpt-6-astra'];
+      modelOptions.replaceChildren(...names.map(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        return option;
+      }));
+    }
+    function setSelectionParams(url) {
+      url.searchParams.set('cli', provider.value);
+      url.searchParams.delete('provider');
+      if (model.value.trim()) url.searchParams.set('model', model.value.trim());
+      else url.searchParams.delete('model');
+    }
+
+    function bubble(kind, value, error = false, attached = []) {
+      const el = document.createElement('div');
+      el.className = `message ${kind}${error ? ' error' : ''}`;
+      if (kind === 'assistant') renderAnswer(el, value);
+      else el.textContent = value;
+      if (attached.length) {
+        const row = document.createElement('div');
+        row.className = 'attachments';
+        for (const file of attached) {
+          const chip = document.createElement('span');
+          chip.className = 'attachment';
+          chip.textContent = file.type === 'image' ? 'Image' : '📎 ' + file.name;
+          if (file.type === 'image') addThumbnail(chip, file);
+          row.append(chip);
+        }
+        el.append(row);
+      }
+      chat.append(el);
+      chat.scrollTop = chat.scrollHeight;
+      return el;
+    }
+    function renderAnswer(el, value) { el.innerHTML = markdown.render(value); }
+    function render() {
+      chat.replaceChildren();
+      const messages = current.messages;
+      if (!messages.length) {
+        const welcome = document.createElement('div');
+        welcome.className = 'welcome';
+        welcome.innerHTML = '<strong>What would you like to do?</strong>Choose a CLI, enter a prompt, and send it.';
+        chat.append(welcome);
+      } else for (const message of messages) bubble(message.kind, message.text, message.error, message.attachments);
+    }
+    function renderAttachments() {
+      attachmentsEl.replaceChildren();
+      for (const file of attachments) {
+        const chip = document.createElement('span');
+        chip.className = 'attachment';
+        chip.textContent = file.type === 'image' ? 'Image' : '📎 ' + file.name;
+        if (file.type === 'image') addThumbnail(chip, file);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', file.type === 'image' ? 'Remove image' : 'Remove ' + file.name);
+        remove.textContent = '×';
+        remove.onclick = () => { attachments = attachments.filter(item => item.id !== file.id); renderAttachments(); };
+        chip.append(remove);
+        attachmentsEl.append(chip);
+      }
+    }
+    async function addThumbnail(chip, file) {
+      try {
+        const response = await fetch('/api/attachments/' + encodeURIComponent(file.id), { headers: { 'X-UI-Token': token } });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        if (!chip.isConnected) return;
+        const image = document.createElement('img');
+        image.alt = 'Attached image';
+        const url = URL.createObjectURL(blob);
+        image.onload = () => URL.revokeObjectURL(url);
+        image.onerror = () => URL.revokeObjectURL(url);
+        image.src = url;
+        chip.prepend(image);
+      } catch {}
+    }
+    function clearAttachments() { attachments = []; renderAttachments(); files.value = ''; }
+    function renderQueue() {
+      queueEl.replaceChildren();
+      queueEl.hidden = queuedMessages.length === 0;
+      if (!queuedMessages.length) return;
+      const header = document.createElement('div');
+      header.className = 'queue-header';
+      const label = document.createElement('strong');
+      label.textContent = `${queuedMessages.length} queued ${queuedMessages.length === 1 ? 'message' : 'messages'}`;
+      header.append(label);
+      if (!controller) {
+        const resume = document.createElement('button');
+        resume.type = 'button';
+        resume.textContent = 'Send next';
+        resume.onclick = sendNextQueued;
+        header.append(resume);
+      }
+      queueEl.append(header);
+      for (const entry of queuedMessages) {
+        const row = document.createElement('div');
+        row.className = 'queue-item';
+        const text = document.createElement('span');
+        text.textContent = entry.text + (entry.attachments.length ? ` · ${entry.attachments.length} attached` : '');
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', 'Remove queued message');
+        remove.textContent = '×';
+        remove.onclick = () => { queuedMessages = queuedMessages.filter(item => item !== entry); renderQueue(); };
+        row.append(text, remove);
+        queueEl.append(row);
+      }
+    }
+    function clearQueue() { queuedMessages = []; renderQueue(); }
+    function sendNextQueued() {
+      if (controller || !queuedMessages.length) return;
+      const next = queuedMessages.shift();
+      renderQueue();
+      void runTurn(next.text, next.attachments);
+    }
+    function scheduleWorking(answer, element) {
+      clearTimeout(workingTimer);
+      workingTimer = setTimeout(() => {
+        if (!controller || pendingQuestion || answer.text || !element.isConnected) return;
+        renderAnswer(element, 'Working…');
+        element.hidden = false;
+        if (status.textContent === 'Starting…') status.textContent = 'Working…';
+      }, 500);
+    }
+    attach.onclick = () => files.click();
+    async function uploadFiles(selected) {
+      if (!selected.length) return;
+      if (uploading || pendingQuestion) { status.textContent = 'Wait for the current response'; return; }
+      if (attachments.length + selected.length > 5) { status.textContent = 'Attach up to 5 files'; return; }
+      uploading = true;
+      send.disabled = true;
+      attach.disabled = true;
+      status.textContent = 'Uploading…';
+      try {
+        for (const file of selected) {
+          if (file.size > (file.type.startsWith('image/') ? 5 * 1024 * 1024 : 256 * 1024)) throw new Error('File is too large');
+          const response = await fetch('/api/attachments', {
+            method: 'POST', headers: { 'X-UI-Token': token, 'X-File-Name': encodeURIComponent(file.name) }, body: file
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Upload failed');
+          attachments.push(result);
+          renderAttachments();
+        }
+        status.textContent = 'Ready';
+      } catch (error) { status.textContent = error.message; }
+      finally { uploading = false; send.disabled = false; attach.disabled = !!pendingQuestion; }
+    }
+    files.onchange = () => {
+      const selected = Array.from(files.files);
+      files.value = '';
+      uploadFiles(selected);
+    };
+    const hasDraggedFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+    document.addEventListener('dragover', event => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      if (uploading || controller) { event.dataTransfer.dropEffect = 'none'; return; }
+      event.dataTransfer.dropEffect = 'copy';
+      form.classList.add('drop-target');
+    });
+    document.addEventListener('dragleave', event => {
+      if (event.relatedTarget === null) form.classList.remove('drop-target');
+    });
+    document.addEventListener('drop', event => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      form.classList.remove('drop-target');
+      uploadFiles(Array.from(event.dataTransfer.files));
+    });
+    window.addEventListener('blur', () => form.classList.remove('drop-target'));
+    prompt.addEventListener('paste', event => {
+      const images = Array.from(event.clipboardData?.items || [])
+        .filter(item => item.kind === 'file' && ['image/png', 'image/jpeg', 'image/webp'].includes(item.type))
+        .flatMap((item, index) => {
+          const blob = item.getAsFile();
+          if (!blob) return [];
+          const extension = item.type === 'image/png' ? 'png' : item.type === 'image/jpeg' ? 'jpg' : 'webp';
+          return [new File([blob], `clipboard-image-${Date.now()}-${index}.${extension}`, { type: item.type })];
+        });
+      if (images.length) { event.preventDefault(); uploadFiles(images); }
+    });
+    function setUrl(id, replace = false, keepPrompt = false) {
+      const url = new URL(location.href);
+      setSelectionParams(url);
+      if (id) url.searchParams.set('conversation', id);
+      else url.searchParams.delete('conversation');
+      if (!keepPrompt) url.searchParams.delete('prompt');
+      url.searchParams.delete('submit');
+      history[replace ? 'replaceState' : 'pushState']({}, '', url);
+    }
+    async function refreshList() {
+      const response = await fetch('/api/conversations', { headers: { 'X-UI-Token': token } });
+      if (!response.ok) throw new Error('Could not load conversations');
+      const conversations = await response.json();
+      list.replaceChildren();
+      if (!conversations.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-list';
+        empty.textContent = 'No conversations yet';
+        list.append(empty);
+      }
+      for (const conversation of conversations) {
+        const row = document.createElement('div');
+        row.className = 'conversation' + (conversation.id === current.id ? ' active' : '');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'open';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = conversation.title || 'Untitled chat';
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        const state = document.createElement('span');
+        state.className = 'state ' + (conversation.status === 'Working' ? 'working' : conversation.status === 'Waiting for response' ? 'waiting' : 'ready');
+        state.textContent = conversation.status || 'Ready';
+        meta.append(state, document.createTextNode(` · ${conversation.provider === 'claude' ? 'Claude' : 'Codex'} · ${conversation.model || 'Default model'}`));
+        button.append(name, meta);
+        button.onclick = () => loadConversation(conversation.id);
+        const rename = document.createElement('button');
+        rename.type = 'button';
+        rename.className = 'rename';
+        rename.textContent = 'Rename';
+        rename.setAttribute('aria-label', 'Rename ' + conversation.title);
+        rename.onclick = async () => {
+          const title = window.prompt('Conversation name', conversation.title || '');
+          if (title === null || title.trim() === conversation.title) return;
+          try {
+            const response = await fetch('/api/conversations/' + encodeURIComponent(conversation.id), {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-UI-Token': token },
+              body: JSON.stringify({ title })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not rename conversation');
+            await refreshList();
+          } catch (error) { status.textContent = error.message; }
+        };
+        row.append(button, rename);
+        list.append(row);
+      }
+    }
+    async function loadConversation(id, fromUrl = false) {
+      if (controller) controller.abort();
+      pendingQuestion = null;
+      clearQueue();
+      const visit = ++navigation;
+      const response = await fetch('/api/conversations/' + encodeURIComponent(id), { headers: { 'X-UI-Token': token } });
+      if (!response.ok) {
+        status.textContent = 'Conversation not found';
+        if (fromUrl) setUrl(null, true);
+        return;
+      }
+      const conversation = await response.json();
+      if (visit !== navigation) return;
+      current = conversation;
+      clearAttachments();
+      provider.value = conversation.provider;
+      model.value = conversation.model || '';
+      refreshModelOptions();
+      prompt.value = fromUrl ? prompt.value : '';
+      render();
+      if (!fromUrl) setUrl(id);
+      else { const url = new URL(location.href); setSelectionParams(url); history.replaceState({}, '', url); }
+      status.textContent = conversation.running ? 'Running; reload when finished' : 'Ready';
+      send.disabled = !!conversation.running;
+      await refreshList();
+    }
+    function newChat(keepPrompt = false) {
+      if (controller) controller.abort();
+      pendingQuestion = null;
+      clearQueue();
+      navigation++;
+      current = { id: null, provider: provider.value, model: model.value.trim(), cwd: defaultWorkingDirectory, messages: [] };
+      clearAttachments();
+      if (!keepPrompt) prompt.value = '';
+      send.disabled = false;
+      status.textContent = 'Ready';
+      setUrl(null, false, keepPrompt);
+      render();
+      refreshList().catch(() => {});
+      prompt.focus();
+    }
+    function busy(value) {
+      document.querySelector('main').classList.toggle('busy', value);
+      send.disabled = uploading;
+      provider.disabled = value;
+      model.disabled = value;
+      stop.hidden = !value;
+      attach.disabled = !!pendingQuestion || uploading;
+      status.textContent = value ? 'Starting…' : 'Ready';
+      renderQueue();
+    }
+    document.querySelector('#new').onclick = () => newChat();
+    provider.onchange = () => { refreshModelOptions(); model.value = ''; newChat(true); };
+    model.onchange = () => newChat(true);
+    window.onpopstate = () => {
+      const id = new URLSearchParams(location.search).get('conversation');
+      if (id) loadConversation(id, true).catch(error => { status.textContent = error.message; });
+      else {
+        if (controller) controller.abort();
+        pendingQuestion = null;
+        navigation++;
+        clearQueue();
+        const params = new URLSearchParams(location.search);
+        const cli = params.get('cli') || params.get('provider');
+        if (['codex', 'claude'].includes(cli)) provider.value = cli;
+        model.value = params.get('model') || '';
+        refreshModelOptions();
+        prompt.value = params.get('prompt') || '';
+        current = { id: null, provider: provider.value, model: model.value.trim(), cwd: defaultWorkingDirectory, messages: [] };
+        render(); refreshList().catch(() => {});
+      }
+    };
+    stop.onclick = () => controller?.abort();
+    prompt.onkeydown = (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.querySelector('#form').requestSubmit(); }
+    };
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const value = prompt.value.trim() || (attachments.some(file => file.type === 'image') ? 'Describe this image.' : '');
+      if (!token || uploading) return;
+      if (!value) { if (!controller) sendNextQueued(); return; }
+      if (controller && pendingQuestion) {
+        const pending = pendingQuestion;
+        if (pending.socket.readyState !== WebSocket.OPEN) return;
+        pending.socket.send(JSON.stringify({ type: 'answer', id: pending.id, answer: value }));
+        pending.conversation.messages.splice(pending.conversation.messages.indexOf(pending.answer), 0, { kind: 'user', text: value });
+        bubble('user', value);
+        chat.append(pending.answerEl);
+        prompt.value = '';
+        prompt.placeholder = 'Ask Codex or Claude…';
+        pendingQuestion = null;
+        pending.answerEl.hidden = true;
+        status.textContent = 'Starting…';
+        scheduleWorking(pending.answer, pending.answerEl);
+        return;
+      }
+      if (queuedMessages.length >= 20) { status.textContent = 'Queue is full (20 messages)'; return; }
+      const sentAttachments = attachments.slice();
+      prompt.value = '';
+      clearAttachments();
+      if (controller || queuedMessages.length) {
+        queuedMessages.push({ text: value, attachments: sentAttachments });
+        renderQueue();
+        if (controller) status.textContent = `${queuedMessages.length} queued`;
+        else sendNextQueued();
+        return;
+      }
+      void runTurn(value, sentAttachments);
+    };
+    async function runTurn(value, sentAttachments) {
+      if (controller) return;
+      const selected = provider.value;
+      const selectedModel = model.value.trim();
+      if (current.provider !== selected || current.model !== selectedModel) {
+        current = { id: null, provider: selected, model: selectedModel, cwd: defaultWorkingDirectory, messages: [] };
+        render();
+      }
+      const conversation = current;
+      if (chat.querySelector('.welcome')) chat.replaceChildren();
+      conversation.messages.push({ kind: 'user', text: value, attachments: sentAttachments });
+      bubble('user', value, false, sentAttachments);
+      let answer = { kind: 'assistant', text: '' };
+      conversation.messages.push(answer);
+      let answerEl = bubble('assistant', '');
+      answerEl.hidden = true;
+      controller = new AbortController();
+      busy(true);
+      scheduleWorking(answer, answerEl);
+      let turnSucceeded = false;
+      try {
+        const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/stream`, ['cli-web', token]);
+        controller.signal.addEventListener('abort', () => socket.close(), { once: true });
+        await new Promise((resolve, reject) => {
+          let finished = false;
+          socket.onopen = () => socket.send(JSON.stringify({
+            type: 'run', provider: selected, model: selectedModel, cwd: conversation.cwd,
+            prompt: value, attachments: sentAttachments.map(file => file.id), session: conversation.id || undefined
+          }));
+          socket.onmessage = event => {
+            const item = JSON.parse(event.data);
+            if (item.type === 'session') {
+              if (!conversation.id) { conversation.id = item.id; setUrl(item.id); }
+              refreshList().catch(() => {});
+            }
+            if (item.type === 'status' && !pendingQuestion) status.textContent = item.message;
+            if (item.type === 'question') {
+              clearTimeout(workingTimer);
+              refreshList().catch(() => {});
+              const questionText = [item.question, ...(item.options || []).map((choice, index) => `${index + 1}. ${choice}`)].join('\n');
+              if (answer.text) {
+                conversation.messages.push({ kind: 'assistant', text: questionText });
+                const questionEl = bubble('assistant', questionText);
+                questionEl.classList.add('question');
+                answer = { kind: 'assistant', text: '' };
+                conversation.messages.push(answer);
+                answerEl = bubble('assistant', '');
+              } else {
+                conversation.messages.splice(conversation.messages.indexOf(answer), 0, { kind: 'assistant', text: questionText });
+                const questionEl = bubble('assistant', questionText);
+                questionEl.classList.add('question');
+                chat.append(answerEl);
+              }
+              pendingQuestion = { id: item.id, socket, conversation, answer, answerEl };
+              send.disabled = false;
+              renderAnswer(answerEl, 'Waiting for your response…');
+              answerEl.hidden = false;
+              status.textContent = 'Waiting for your response…';
+              prompt.placeholder = 'Type your choice or answer…';
+              prompt.focus();
+            }
+            if (item.type === 'text') {
+              clearTimeout(workingTimer);
+              answer.text += item.text;
+              renderAnswer(answerEl, answer.text);
+              answerEl.hidden = false;
+            }
+            if (item.type === 'error') {
+              clearTimeout(workingTimer);
+              answer.text += (answer.text ? '\n' : '') + item.message;
+              answer.error = true;
+              renderAnswer(answerEl, answer.text);
+              answerEl.hidden = false;
+              answerEl.classList.add('error');
+            }
+            if (item.type === 'done') { turnSucceeded = item.code === 0 && !answer.error; finished = true; resolve(); socket.close(); }
+            chat.scrollTop = chat.scrollHeight;
+          };
+          socket.onclose = () => { if (!finished) reject(new Error('Connection closed')); };
+          socket.onerror = () => { if (!finished) status.textContent = 'Connection error'; };
+        });
+        if (!answer.text) { renderAnswer(answerEl, 'No text response.'); answerEl.hidden = false; }
+        await refreshList().catch(() => {});
+      } catch (error) {
+        answer.text += controller.signal.aborted ? 'Stopped.' : error.message;
+        renderAnswer(answerEl, answer.text);
+        answerEl.hidden = false;
+        answerEl.classList.add('error');
+      } finally {
+        clearTimeout(workingTimer);
+        const wasAborted = controller.signal.aborted;
+        pendingQuestion = null;
+        prompt.placeholder = 'Ask Codex or Claude…';
+        controller = null;
+        busy(false);
+        if (turnSucceeded && !wasAborted && current === conversation && queuedMessages.length) sendNextQueued();
+        else if (queuedMessages.length) status.textContent = `${queuedMessages.length} queued · paused`;
+        prompt.focus();
+      }
+    }
+    fetch('/api/config').then(r => r.json()).then(async config => {
+      token = config.token;
+      defaultWorkingDirectory = config.cwd;
+      current.cwd = config.cwd;
+      const params = new URLSearchParams(location.search);
+      const cli = params.get('cli') || params.get('provider');
+      if (['codex', 'claude'].includes(cli)) provider.value = cli;
+      model.value = params.get('model') || '';
+      refreshModelOptions();
+      current.provider = provider.value;
+      current.model = model.value.trim();
+      if (params.has('prompt')) prompt.value = params.get('prompt');
+      const id = params.get('conversation');
+      if (id) await loadConversation(id, true);
+      else await refreshList();
+      if (params.get('submit') === '1' && prompt.value.trim()) {
+        const url = new URL(location.href);
+        url.searchParams.delete('submit');
+        history.replaceState({}, '', url);
+        document.querySelector('#form').requestSubmit();
+      }
+    }).catch(() => { status.textContent = 'Cannot connect to server'; send.disabled = true; });
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+node_modules/
+.sessions/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
