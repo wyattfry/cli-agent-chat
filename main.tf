@@ -41,13 +41,13 @@ resource "coder_script" "chat" {
   icon               = "/icon/tasks.svg"
   run_on_start       = true
   start_blocks_login = false
-  script = templatefile("${path.module}/run.sh", {
+  script = templatefile("${path.module}/coder/run.sh", {
     PORT                = var.port
-    SERVER_JS_BASE64    = filebase64("${path.module}/../server.js")
-    INDEX_HTML_BASE64   = filebase64("${path.module}/../index.html")
-    MCP_JS_BASE64       = filebase64("${path.module}/../mcp-ask-user.js")
-    PACKAGE_JSON_BASE64 = filebase64("${path.module}/../package.json")
-    PACKAGE_LOCK_BASE64 = filebase64("${path.module}/../package-lock.json")
+    SERVER_JS_BASE64    = filebase64("${path.module}/server.js")
+    INDEX_HTML_BASE64   = filebase64("${path.module}/index.html")
+    MCP_JS_BASE64       = filebase64("${path.module}/mcp-ask-user.js")
+    PACKAGE_JSON_BASE64 = filebase64("${path.module}/package.json")
+    PACKAGE_LOCK_BASE64 = filebase64("${path.module}/package-lock.json")
   })
 }
 

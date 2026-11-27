@@ -35,13 +35,17 @@ configured because the app uses a subdomain.
 
 ```hcl
 module "cli_agent_chat" {
-  source   = "git::https://github.com/wyattfry/cli-agent-chat.git//coder?ref=main"
+  source   = "git::https://github.com/wyattfry/cli-agent-chat.git?ref=main"
   agent_id = coder_agent.main.id
 }
 ```
 
 Replace `coder_agent.main.id` with your agent reference. For reproducible
 templates, replace `ref=main` with a commit SHA.
+
+The module lives at the repository root, not in a subdirectory, because Coder
+caches a remote module by saving only that module's directory. A module in
+`coder/` would lose the app files it reads from the parent directory.
 
 The app opens in a new popup window without navigation controls, using
 `open_in = "slim-window"`, like Coder's Terminal app. Set `open_in = "tab"` on
